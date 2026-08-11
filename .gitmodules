@@ -1,0 +1,6 @@
+[submodule "twhic"]
+	path = twhic
+	url = git@github.com:twhic/twhic.git
+[submodule "hic"]
+	path = hic
+	url = git@github.com:twhic/hic.git
