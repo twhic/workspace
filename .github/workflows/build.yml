@@ -72,7 +72,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew update
-          brew install meson ninja cmake pkg-config directx-shader-compiler
+          brew install meson ninja cmake pkg-config SharkyRawr/dxc/directx-shader-compiler
 
       - name: Setup MSVC
         if: runner.os == 'Windows'
