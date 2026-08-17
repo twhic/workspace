@@ -39,6 +39,15 @@ jobs:
       - name: Configure git auth for submodules
         run: git config --global url."https://x-access-token:${{ secrets.WORKSPACE_PAT }}@github.com/".insteadOf "https://github.com/"
 
+      - name: Install meson & ninja (pip)
+        shell: bash
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --break-system-packages meson ninja
+          python3 -m pip show meson | grep -E "^(Name|Version|Location)"
+          which meson
+          which ninja
+
       # MARK: deps
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
@@ -46,8 +55,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             clang lld \
-            meson ninja-build cmake \
-            pkg-config python3 \
+            cmake \
+            pkg-config python3 python3-pip \
             libasound2-dev libpulse-dev libaudio-dev \
             libfribidi-dev libjack-dev libsndio-dev \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
@@ -70,16 +79,11 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew update
-          brew install meson ninja cmake pkg-config SharkyRawr/dxc/directx-shader-compiler
+          brew install cmake pkg-config directx-shader-compiler
 
       - name: Setup MSVC
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Install dependencies (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          choco install -y meson ninja
 
       - name: Install DXC (Windows)
         if: runner.os == 'Windows'
@@ -115,8 +119,6 @@ jobs:
           PYTHONIOENCODING: "utf-8"
         run: |
           cd twhic
-          which meson || echo "meson not on PATH"
-          which ninja || echo "ninja not on PATH"
           which dxc || echo "dxc not on PATH"
           python3 tools/build.py builddir --reconfigure
 
