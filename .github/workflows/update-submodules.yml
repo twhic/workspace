@@ -1,0 +1,45 @@
+name: Update submodules
+
+on:
+  repository_dispatch:
+    types: [hic_updated, twhic_updated]
+  workflow_dispatch:
+
+jobs:
+  update-submodule:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine which submodule to update
+        id: target
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            case "${{ github.event.action }}" in
+              hic_updated)   echo "submodule=hic"   >> "$GITHUB_OUTPUT" ;;
+              twhic_updated) echo "submodule=twhic" >> "$GITHUB_OUTPUT" ;;
+            esac
+          else
+            echo "submodule=both" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update submodule(s)
+        run: |
+          if [ "${{ steps.target.outputs.submodule }}" = "both" ]; then
+            git submodule update --init --remote hic twhic
+          else
+            git submodule update --init --remote "${{ steps.target.outputs.submodule }}"
+          fi
+          git diff --quiet && echo "No changes" && exit 0
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add hic twhic
+          git diff --cached --quiet && exit 0
+          git commit -m "chore: update submodules"
+          git push
