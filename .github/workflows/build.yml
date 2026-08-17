@@ -1,0 +1,166 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: twhic-linux-x86_64
+            archive_ext: tar.gz
+          - os: macos-latest
+            artifact_name: twhic-macos-universal
+            archive_ext: tar.gz
+          - os: windows-latest
+            artifact_name: twhic-windows-x86_64
+            archive_ext: zip
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout workspace with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+          token: ${{ secrets.WORKSPACE_PAT }}
+
+      - name: Configure git auth for submodules
+        run: git config --global url."https://x-access-token:${{ secrets.WORKSPACE_PAT }}@github.com/".insteadOf "https://github.com/"
+
+      # MARK: deps
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang lld \
+            meson ninja-build cmake \
+            pkg-config python3 \
+            libasound2-dev libpulse-dev libaudio-dev \
+            libfribidi-dev libjack-dev libsndio-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxfixes-dev libxi-dev libxss-dev libxtst-dev \
+            libxkbcommon-dev libdrm-dev libgbm-dev \
+            libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev \
+            libdbus-1-dev libibus-1.0-dev libudev-dev libthai-dev \
+            libpipewire-0.3-dev libwayland-dev libdecor-0-dev liburing-dev
+
+      - name: Install DXC (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          curl -fsSL https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo gpg --dearmor -o /usr/share/keyrings/lunarg.asc
+          echo "deb [signed-by=/usr/share/keyrings/lunarg.asc] https://packages.lunarg.com/vulkan jammy main" | sudo tee /etc/apt/sources.list.d/lunarg-vulkan-jammy.list
+          sudo apt-get update
+          # The DXC binary ships as part of the full Vulkan SDK apt package,
+          # not as a standalone "directx-shader-compiler" package.
+          sudo apt-get install -y vulkan-sdk
+          echo "/usr/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install meson ninja cmake pkg-config directx-shader-compiler
+
+      - name: Setup MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install -y meson ninja
+
+      - name: Install DXC (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vulkan = "$env:RUNNER_TEMP\vulkan-sdk"
+          Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe" -OutFile "$env:RUNNER_TEMP\vulkan-sdk.exe"
+          # SDK 1.2.189.1+ uses the Qt Installer Framework, not NSIS, so the old
+          # /S /D=<path> flags no longer apply. Use the documented silent-install
+          # syntax instead: --accept-licenses --default-answer --confirm-command install
+          Start-Process -FilePath "$env:RUNNER_TEMP\vulkan-sdk.exe" `
+            -ArgumentList "--root", "$vulkan", "--accept-licenses", "--default-answer", "--confirm-command", "install" `
+            -Wait
+          echo "$vulkan\Bin" >> $env:GITHUB_PATH
+
+      - name: Verify DXC
+        shell: bash
+        run: dxc --version
+
+      # MARK: cache
+      - name: Cache meson subprojects
+        uses: actions/cache@v4
+        with:
+          path: twhic/subprojects
+          key: meson-subprojects-${{ runner.os }}-${{ hashFiles('twhic/subprojects/*.wrap') }}
+          restore-keys: meson-subprojects-${{ runner.os }}-
+
+      # MARK: build
+      - name: Build
+        shell: bash
+        run: |
+          cd twhic
+          python3 tools/build.py builddir --reconfigure
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          STAGING="${{ runner.temp }}/staging"
+          mkdir -p "$STAGING/bin"
+          cp -a twhic/builddir/out/bin/* "$STAGING/bin/"
+          tar -czf "${{ runner.temp }}/${{ matrix.artifact_name }}.tar.gz" -C "$STAGING" .
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          STAGING="${{ runner.temp }}/staging"
+          cp -a twhic/builddir/out/tw_hic.app "$STAGING/"
+          tar -czf "${{ runner.temp }}/${{ matrix.artifact_name }}.tar.gz" -C "$STAGING" .
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          STAGING="${{ runner.temp }}/staging"
+          mkdir -p "$STAGING"
+          cp twhic/builddir/out/bin/tw_hic.exe "$STAGING/"
+          cp twhic/builddir/out/bin/*.dll "$STAGING/" 2>/dev/null || true
+          cd "$STAGING" && 7z a "${{ runner.temp }}/${{ matrix.artifact_name }}.zip" .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ runner.temp }}/${{ matrix.artifact_name }}.${{ matrix.archive_ext }}
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: artifacts/*
