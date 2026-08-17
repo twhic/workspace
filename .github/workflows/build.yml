@@ -60,11 +60,9 @@ jobs:
       - name: Install DXC (Linux)
         if: runner.os == 'Linux'
         run: |
-          curl -fsSL https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo gpg --dearmor -o /usr/share/keyrings/lunarg.asc
-          echo "deb [signed-by=/usr/share/keyrings/lunarg.asc] https://packages.lunarg.com/vulkan jammy main" | sudo tee /etc/apt/sources.list.d/lunarg-vulkan-jammy.list
+          wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc
+          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-noble.list http://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list
           sudo apt-get update
-          # The DXC binary ships as part of the full Vulkan SDK apt package,
-          # not as a standalone "directx-shader-compiler" package.
           sudo apt-get install -y vulkan-sdk
           echo "/usr/bin" >> $GITHUB_PATH
 
@@ -112,8 +110,14 @@ jobs:
       # MARK: build
       - name: Build
         shell: bash
+        env:
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: "utf-8"
         run: |
           cd twhic
+          which meson || echo "meson not on PATH"
+          which ninja || echo "ninja not on PATH"
+          which dxc || echo "dxc not on PATH"
           python3 tools/build.py builddir --reconfigure
 
       - name: Package (Linux)
