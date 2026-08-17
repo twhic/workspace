@@ -42,8 +42,6 @@ jobs:
       - name: Install meson & ninja (pip)
         shell: bash
         run: |
-          # can't have shit in this house dawg
-          python3 -m pip install --upgrade --break-system-packages pip
           python3 -m pip install --break-system-packages meson ninja
           python3 -m pip show meson | grep -E "^(Name|Version|Location)"
           which meson
