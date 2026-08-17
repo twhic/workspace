@@ -78,7 +78,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew update
-          brew install cmake pkg-config directx-shader-compiler
+          brew install cmake pkg-config SharkyRawr/dxc/directx-shader-compiler
 
       - name: Setup MSVC
         if: runner.os == 'Windows'
