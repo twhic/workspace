@@ -42,7 +42,8 @@ jobs:
       - name: Install meson & ninja (pip)
         shell: bash
         run: |
-          python3 -m pip install --upgrade pip
+          # can't have shit in this house dawg
+          python3 -m pip install --upgrade --break-system-packages pip
           python3 -m pip install --break-system-packages meson ninja
           python3 -m pip show meson | grep -E "^(Name|Version|Location)"
           which meson
@@ -118,6 +119,12 @@ jobs:
           PYTHONUTF8: "1"
           PYTHONIOENCODING: "utf-8"
         run: |
+          # we want to explicitly use the MSVC toolchain on Windows
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            export PATH="$(cygpath -u "$VCToolsInstallDir")bin/Hostx64/x64:$PATH"
+            which link.exe
+            link.exe 2>&1 | head -n 1 || true
+          fi
           cd twhic
           which dxc || echo "dxc not on PATH"
           python3 tools/build.py builddir --reconfigure
