@@ -37,7 +37,10 @@ jobs:
           else
             git submodule update --init --remote "${{ steps.target.outputs.submodule }}"
           fi
-          git diff --quiet && echo "No changes" && exit 0
+          if git diff --quiet; then
+            echo "No changes"
+            exit 0
+          fi
 
       - name: Commit and push
         run: |
