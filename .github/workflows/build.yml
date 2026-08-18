@@ -63,7 +63,8 @@ jobs:
             libxkbcommon-dev libdrm-dev libgbm-dev \
             libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev \
             libdbus-1-dev libibus-1.0-dev libudev-dev libthai-dev \
-            libpipewire-0.3-dev libwayland-dev libdecor-0-dev liburing-dev
+            libpipewire-0.3-dev libwayland-dev libdecor-0-dev liburing-dev \
+            libcurl4-openssl-dev
 
       - name: Install DXC (Linux)
         if: runner.os == 'Linux'
@@ -84,7 +85,7 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Install DXC (Windows)
+      - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -97,6 +98,8 @@ jobs:
             -ArgumentList "--root", "$vulkan", "--accept-licenses", "--default-answer", "--confirm-command", "install" `
             -Wait
           echo "$vulkan\Bin" >> $env:GITHUB_PATH
+          choco install -y pkgconfiglite
+          where pkg-config
 
       - name: Verify DXC
         shell: bash
