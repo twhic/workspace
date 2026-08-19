@@ -11,7 +11,28 @@ permissions:
   contents: write
 
 jobs:
+  check-flag:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+    steps:
+      - name: Check for [ci] flag in commit messages
+        id: check
+        env:
+          COMMIT_MSG: ${{ github.event_name == 'pull_request' && github.event.pull_request.title || github.event.head_commit.message }}
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          if [ "$IS_TAG" = "true" ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$COMMIT_MSG" == \[ci\]* ]]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: check-flag
+    if: needs.check-flag.outputs.should_build == 'true'
     strategy:
       fail-fast: false
       matrix:

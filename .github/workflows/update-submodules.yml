@@ -30,7 +30,14 @@ jobs:
             echo "submodule=both" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Record pre-update commit hashes
+        id: pre
+        run: |
+          echo "hic_before=$(git -C hic rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "twhic_before=$(git -C twhic rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Update submodule(s)
+        id: update
         run: |
           if [ "${{ steps.target.outputs.submodule }}" = "both" ]; then
             git submodule update --init --remote hic twhic
@@ -39,15 +46,70 @@ jobs:
           fi
           if git diff --quiet; then
             echo "No changes"
+            echo "changes=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          echo "changes=true" >> "$GITHUB_OUTPUT"
+
+      - name: Check for [ci] flag in commits messages
+        id: flag
+        if: steps.update.outputs.changes == 'true'
+        env:
+          HIC_BEFORE: ${{ steps.pre.outputs.hic_before }}
+          TWHIC_BEFORE: ${{ steps.pre.outputs.twhic_before }}
+        run: |
+          found=false
+          collected_commits=""
+
+          check_commits() {
+            local submodule=$1
+            local before=$2
+            local after=$(git -C "$submodule" rev-parse HEAD 2>/dev/null || echo "")
+            if [ -z "$before" ] || [ -z "$after" ] || [ "$before" = "$after" ]; then
+              return
+            fi
+
+            local commits=$(git -C "$submodule" log --pretty=format:"%H %s" "$before..$after")
+
+            while IFS= read -r line; do
+              collected_commits+="$submodule: $line"$'\n'
+            done <<< "$commits"
+
+            if echo "$commits" | grep -qE '^[0-9a-f]+ \[ci\]'; then
+              echo "Found [ci] flag in $submodule commit messages"
+              found=true
+            fi
+          }
+
+          check_commits "hic" "$HIC_BEFORE"
+          check_commits "twhic" "$TWHIC_BEFORE"
+
+          echo "has_ci_flag=$found" >> "$GITHUB_OUTPUT"
+
+          delim="EOF_$(openssl rand -hex 8)"
+          echo "collected_commits<<$delim" >> "$GITHUB_OUTPUT"
+          echo "$collected_commits" >> "$GITHUB_OUTPUT"
+          echo "$delim" >> "$GITHUB_OUTPUT"
 
       - name: Commit and push
+        env:
+          HAS_CI_FLAG: ${{ steps.flag.outputs.has_ci_flag }}
+          COLLECTED_COMMITS: ${{ steps.flag.outputs.collected_commits }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add hic twhic
           git diff --cached --quiet && exit 0
-          git commit -m "chore: update submodules"
+
+          message="chore: update submodules"
+          if [ "$HAS_CI_FLAG" = "true" ]; then
+            message="[ci] $message"
+          fi
+
+          if [ -n "$COLLECTED_COMMITS" ]; then
+            message="$(printf '%s\n\n%s' "$message" "$COLLECTED_COMMITS")"
+          fi
+
+          git commit -m "$message"
           git remote set-url origin https://x-access-token:${{ secrets.WORKSPACE_PAT }}@github.com/${{ github.repository }}.git
           git push
