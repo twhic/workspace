@@ -149,7 +149,7 @@ jobs:
           fi
           cd twhic
           which dxc || echo "dxc not on PATH"
-          python3 tools/build.py builddir --reconfigure
+          python3 tools/build.py builddir --reconfigure --verbose
 
       - name: Package (Linux)
         if: runner.os == 'Linux'
